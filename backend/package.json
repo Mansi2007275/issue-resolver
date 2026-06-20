@@ -1,0 +1,28 @@
+{
+  "name": "private-bounty-ai-backend",
+  "version": "1.0.0",
+  "description": "PrivateBounty AI — local-first GitHub issue analyzer using QVAC SDK",
+  "type": "module",
+  "main": "analyze.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test-flow.js",
+    "ingest": "node -e \"import('./ingest.js').then(m => m.ingestIssue(process.env.OWNER, process.env.REPO, process.env.ISSUE)).catch(console.error)\"",
+    "analyze": "node test-flow.js"
+  },
+  "keywords": [
+    "qvac",
+    "ai",
+    "local-first",
+    "github",
+    "rag",
+    "hackathon"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@qvac/sdk": "latest",
+    "@sqliteai/sqlite-wasm": "latest"
+  }
+}
