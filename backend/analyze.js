@@ -1,213 +1,197 @@
-/**
- * analyze.js — PrivateBounty AI
- * Retrieves context chunks, and runs LLaMA 3.2 1B
- * to generate a structured JSON analysis of a GitHub issue.
- *
- * Export: async function analyzeIssue(workspace, issueTitle, userSkills)
- */
+// analyze.js — PrivateBounty AI
+// Retrieves context chunks and runs on-device LLM to analyse a GitHub issue.
 
-import { loadModel, unloadModel, completion, LLAMA_3_2_1B_INST_Q4_0 } from '@qvac/sdk';
+import { loadModel, unloadModel, completion, QWEN3_4B_INST_Q4_K_M } from '@qvac/sdk';
 import sqlite3InitModule from '@sqliteai/sqlite-wasm';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// ── Config ────────────────────────────────────────────────────────────────────
+const DB_PATH = 'C:\\Users\\yadav\\AppData\\Local\\PrivateBountyAI\\bounty-index.db';
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Keep model loaded between calls so sequential compare requests
+//    don't trigger SDK auto-shutdown between the first and second analysis.
+let globalModelId = null;
 
-/**
- * Extract a JSON object from a string that may contain extra prose.
- * @param {string} text
- * @returns {object|null}
- */
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function extractJSON(text) {
-  // Try direct parse first
-  try {
-    return JSON.parse(text.trim());
-  } catch (_) { }
-
-  // Try finding the first {...} block
+  // Strip <think>…</think> blocks that Qwen3 emits
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  try { return JSON.parse(text); } catch (_) {}
+  // Try to find a JSON object anywhere in the text
   const match = text.match(/\{[\s\S]*\}/);
-  if (match) {
-    try {
-      return JSON.parse(match[0]);
-    } catch (_) { }
-  }
-
+  if (match) { try { return JSON.parse(match[0]); } catch (_) {} }
   return null;
 }
 
-/**
- * Return a graceful fallback result when JSON parsing fails.
- * @param {string} rawText Raw LLM output
- */
-function buildFallback(rawText) {
-  return {
-    canSolve: false,
-    confidence: 0,
-    difficulty: 'Unknown',
-    estimatedHours: 0,
-    approach: rawText.trim().substring(0, 500) || 'Could not parse LLM response.',
-    requiredSkills: [],
-    missingSkills: [],
-    firstStep: 'Review the issue description manually.',
-    warningFlags: 'JSON parse failed — raw LLM output returned in "approach" field.',
-    _raw: rawText,
-  };
-}
-
-// ── Main Export ────────────────────────────────────────────────────────────
-
-/**
- * Analyze a previously-ingested GitHub issue and score it against user skills.
- *
- * @param {string}   workspace    Workspace name (e.g. "issue-facebook-react-1")
- * @param {string}   issueTitle   The issue title
- * @param {string[]} userSkills   Array of skill strings (e.g. ["JavaScript","React"])
- * @returns {Promise<object>}     Structured analysis object
- */
-export async function analyzeIssue(workspace, issueTitle, userSkills) {
-  const dbPath = 'C:\\Users\\yadav\\AppData\\Local\\PrivateBountyAI\\bounty-index.db';
-  console.log(`🔍 Looking for DB at: ${dbPath}`);
-  console.log(`🔍 DB exists: ${existsSync(dbPath)}`);
-  const safeWorkspace = workspace.replace(/[^a-zA-Z0-9_]/g, '_');
-
-  console.log('\n╔═══════════════════════════════════════════════╗');
-  console.log('║  PrivateBounty AI — Analysis Pipeline Starting  ║');
-  console.log('╚═══════════════════════════════════════════════╝\n');
-  console.log(`📌 Workspace   : ${workspace}`);
-  console.log(`📋 Issue Title : ${issueTitle}`);
-  console.log(`🛠  User Skills : ${Array.isArray(userSkills) ? userSkills.join(', ') : userSkills}\n`);
-
-  // ── Step 1: Open SQLite and retrieve chunks ────────────────────────
-  console.log(`\n─── Step 1/3: Retrieving context chunks from SQLite ───`);
+async function loadContextChunks(safeWorkspace) {
   const sqlite3 = await sqlite3InitModule();
-  const dbFileData = readFileSync(dbPath);
+  const dbFileData = new Uint8Array(readFileSync(DB_PATH));
   const p = sqlite3.wasm.allocFromTypedArray(dbFileData);
   const db = new sqlite3.oo1.DB();
   sqlite3.capi.sqlite3_deserialize(
     db.pointer, 'main', p, dbFileData.byteLength, dbFileData.byteLength,
     sqlite3.capi.SQLITE_DESERIALIZE_FREEONCLOSE
   );
-  console.log('✅ DB loaded from disk into wasm memory');
-
-  const contextChunks = [];
+  const chunks = [];
   try {
     db.exec({
       sql: `SELECT text FROM "${safeWorkspace}" ORDER BY chunk_idx ASC`,
       rowMode: 'object',
-      callback: (row) => contextChunks.push(row),
+      callback: row => chunks.push(row.text),
     });
-  } catch (err) {
-    console.warn('⚠️  Could not retrieve chunks:', err.message);
+  } catch (e) {
+    console.warn('⚠️ Could not retrieve chunks:', e.message);
   }
-
   db.close();
-  console.log(`✅ Retrieved ${contextChunks.length} context chunks`);
-  contextChunks.forEach((c, i) =>
-    console.log(`   [${i + 1}] "${String(c.text).substring(0, 80).replace(/\n/g, ' ')}…"`)
-  );
-
-  // ── Step 2: Build the LLM prompt ─────────────────────────────────────────
-  console.log('\n─── Step 2/3: Building LLM prompt ───');
-  const context = contextChunks.map((c, i) => `[Context ${i + 1}]\n${c.text}`).join('\n\n');
-  const skillsStr = Array.isArray(userSkills) ? userSkills.join(', ') : userSkills;
-
-  const systemPrompt = `You are an expert software engineer helping developers evaluate GitHub issues.
-Analyze the given issue context and the developer's skills, then respond ONLY with a valid JSON object — no markdown, no extra text.`;
-
-  const userPrompt = `
-ISSUE TITLE: ${issueTitle}
-
-RELEVANT CONTEXT FROM ISSUE:
-${context}
-
-DEVELOPER SKILLS: ${skillsStr}
-
-Based on the above, produce a JSON object with EXACTLY this structure:
-{
-  "canSolve": true or false,
-  "confidence": integer 0-100,
-  "difficulty": "Beginner" | "Intermediate" | "Advanced",
-  "estimatedHours": integer (realistic hours to solve),
-  "approach": "1. First step\\n2. Second step\\n3. Third step (numbered list as a single string)",
-  "requiredSkills": ["skill1", "skill2"],
-  "missingSkills": ["skill3"],
-  "firstStep": "The single most important first action to take",
-  "warningFlags": "Any blockers or risks, or empty string if none"
+  return chunks;
 }
 
-Reply with ONLY the JSON object.`.trim();
-
-  console.log('✅ Prompt constructed');
-
-  // ── Step 3: Load LLM and run completion ──────────────────────────────────
-  console.log('\n─── Step 3/3: Loading LLAMA_3_2_1B_INST_Q4_0 LLM and running completion ───');
-  let lastPct = -1;
-  const llmModelId = await loadModel({
-    modelSrc: LLAMA_3_2_1B_INST_Q4_0,
-    onProgress: (progress) => {
-      const pct = Math.floor(progress.percentage);
-      if (pct !== lastPct && pct % 10 === 0) {
-        process.stdout.write(`\r   Loading LLM: ${pct}%   `);
-        lastPct = pct;
-      }
+async function ensureModel() {
+  if (globalModelId) {
+    console.log('♻️  Reusing cached model:', globalModelId);
+    return globalModelId;
+  }
+  console.log('⏳ Loading model (ctx_size 4096)…');
+  globalModelId = await loadModel({
+    modelSrc: QWEN3_4B_INST_Q4_K_M,
+    modelConfig: { ctx_size: 4096 },
+    onProgress: p => {
+      const pct = Math.floor(p.percentage);
+      if (pct % 20 === 0) process.stdout.write(`\r  Loading: ${pct}%   `);
     },
   });
-  console.log('\n✅ LLM loaded, modelId:', llmModelId);
-  console.log('\n─── Running streamed completion ───');
+  console.log('\n✅ Model loaded:', globalModelId);
+  return globalModelId;
+}
 
-  const result = completion({
-    modelId: llmModelId,
-    history: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-  });
+// ── Main export ───────────────────────────────────────────────────────────────
 
-  let fullText = '';
-  process.stdout.write('🤖 LLM output: ');
+export async function analyzeIssue(workspace, issueTitle, userSkills) {
+  const safeWorkspace = workspace.replace(/[^a-zA-Z0-9_]/g, '_');
 
-  for await (const token of result.tokenStream) {
-    process.stdout.write(token);
-    fullText += token;
+  console.log('\n╔═══════════════════════════════════════════╗');
+  console.log('║  PrivateBounty AI — Analysis Starting     ║');
+  console.log('╚═══════════════════════════════════════════╝');
+  console.log(`📌 Workspace : ${workspace}`);
+  console.log(`📋 Title     : ${issueTitle}`);
+  console.log(`🛠  Skills   : ${Array.isArray(userSkills) ? userSkills.join(', ') : userSkills}\n`);
+
+  // ── Step 1: Fetch context from SQLite ─────────────────────────────────────
+  console.log('─── Step 1/3: Fetching context from SQLite ───');
+  const contextChunks = await loadContextChunks(safeWorkspace);
+  console.log(`✅ Retrieved ${contextChunks.length} chunks`);
+  const context = contextChunks.join(' ').substring(0, 600);
+
+  // ── Step 2: Build prompt ──────────────────────────────────────────────────
+  console.log('─── Step 2/3: Building prompt ───');
+  const skillsStr = Array.isArray(userSkills) ? userSkills.join(', ') : (userSkills || '');
+
+  const userPrompt = `GitHub Issue: ${issueTitle}
+
+Issue details: ${context}
+
+Developer skills: ${skillsStr}
+
+Analyze this issue and fill in the JSON below with REAL values specific to this issue.
+Do NOT copy the example values — compute new ones based on the actual issue content.
+Output ONLY the JSON object, nothing else:
+
+{
+  "canSolve": true,
+  "confidence": 75,
+  "difficulty": "Intermediate",
+  "estimatedHours": 8,
+  "approach": "Step 1: ... Step 2: ... Step 3: ...",
+  "requiredSkills": ["skill1", "skill2"],
+  "missingSkills": [],
+  "firstStep": "specific first action",
+  "warningFlags": ""
+}`;
+
+  const history = [
+    {
+      role: 'system',
+      content: 'You are a JSON API. You ONLY output valid JSON objects. Never output explanations, markdown, or <think> tags. Analyze the GitHub issue provided and compute REAL values — do not copy placeholder values from the template.',
+    },
+    { role: 'user', content: userPrompt },
+  ];
+  console.log('✅ Prompt built');
+
+  // ── Step 3: Load model (cached) and run completion ────────────────────────
+  console.log('─── Step 3/3: Running LLM completion ───');
+  let llmModelId;
+  try {
+    llmModelId = await ensureModel();
+  } catch (e) {
+    // Model may have been evicted — clear cache and retry once
+    console.warn('⚠️ Model load failed, retrying fresh:', e.message);
+    globalModelId = null;
+    llmModelId = await ensureModel();
   }
 
-  console.log('\n✅ Completion finished\n');
-
-  // ── Clean up & Parse JSON ───────────────────────────────────────────────────
-  await unloadModel({ modelId: llmModelId });
-  console.log('✅ LLM model unloaded\n');
-
-  let analysis = extractJSON(fullText);
-
-  if (!analysis) {
-    console.warn('⚠️  Could not parse JSON from LLM output — using fallback');
-    analysis = buildFallback(fullText);
-  } else {
-    // Ensure required fields exist with defaults
-    analysis = {
-      canSolve: Boolean(analysis.canSolve ?? false),
-      confidence: Number(analysis.confidence ?? 0),
-      difficulty: analysis.difficulty || 'Unknown',
-      estimatedHours: Number(analysis.estimatedHours ?? 0),
-      approach: analysis.approach || '',
-      requiredSkills: Array.isArray(analysis.requiredSkills) ? analysis.requiredSkills : [],
-      missingSkills: Array.isArray(analysis.missingSkills) ? analysis.missingSkills : [],
-      firstStep: analysis.firstStep || '',
-      warningFlags: analysis.warningFlags || '',
-    };
-    console.log('✅ JSON parsed successfully');
+  let rawText = '';
+  let completionOk = false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    console.log(`\n─── Attempt ${attempt}/2 ───`);
+    rawText = '';
+    try {
+      const run = completion({ modelId: llmModelId, history });
+      process.stdout.write('🤖 LLM: ');
+      // Use the correct .events API (NOT .tokenStream)
+      for await (const e of run.events) {
+        if (e.type === 'contentDelta') {
+          process.stdout.write(e.text);
+          rawText += e.text;
+        }
+      }
+      console.log('\n✅ Completion finished');
+      completionOk = true;
+      break;
+    } catch (err) {
+      console.warn(`⚠️ Completion error (attempt ${attempt}):`, err.message);
+      // If model was invalidated, reload and retry
+      globalModelId = null;
+      try { llmModelId = await ensureModel(); } catch (_) {}
+    }
   }
+
+  if (!completionOk || !rawText) {
+    throw new Error('LLM completion failed after 2 attempts.');
+  }
+
+  // ── Parse result ──────────────────────────────────────────────────────────
+  const parsed = extractJSON(rawText);
+  if (!parsed) {
+    console.error('❌ JSON parse failed. Raw output:', rawText.substring(0, 300));
+    throw new Error('LLM did not return valid JSON. Please try again.');
+  }
+
+  const analysis = {
+    canSolve: Boolean(parsed.canSolve ?? false),
+    confidence: Number(parsed.confidence ?? 0),
+    difficulty: parsed.difficulty || 'Unknown',
+    estimatedHours: Number(parsed.estimatedHours ?? 0),
+    approach: parsed.approach || '',
+    requiredSkills: Array.isArray(parsed.requiredSkills) ? parsed.requiredSkills : [],
+    missingSkills: Array.isArray(parsed.missingSkills) ? parsed.missingSkills : [],
+    firstStep: parsed.firstStep || '',
+    warningFlags: parsed.warningFlags || '',
+  };
 
   console.log('\n╔═════════════════════════════════════════════╗');
-  console.log('║  Analysis Complete!                           ║');
+  console.log('║  Analysis Complete!                         ║');
   console.log(`║  canSolve  : ${String(analysis.canSolve).padEnd(28)} ║`);
   console.log(`║  confidence: ${String(analysis.confidence + '%').padEnd(28)} ║`);
   console.log(`║  difficulty: ${String(analysis.difficulty).padEnd(28)} ║`);
   console.log(`║  est. hours: ${String(analysis.estimatedHours + 'h').padEnd(28)} ║`);
   console.log('╚═════════════════════════════════════════════╝\n');
+
+  // NOTE: We intentionally do NOT unload the model here.
+  // Keeping it loaded means:
+  //   a) Comparison (second analyze call) reuses the model instantly
+  //   b) The SDK never auto-shuts-down between the two calls
+  //   c) No WORKER_SHUTDOWN errors propagate up to the server
 
   return analysis;
 }

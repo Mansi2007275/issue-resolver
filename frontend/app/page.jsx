@@ -254,6 +254,7 @@ export default function HomePage() {
   const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [breakdownLoading, setBreakdownLoading] = useState(false)
   const [breakdown, setBreakdown] = useState(null)
+  const [breakdownError, setBreakdownError] = useState(null)
   const [prDraftOpen, setPrDraftOpen] = useState(false)
   const [checkedSubtasks, setCheckedSubtasks] = useState({})
 
@@ -337,6 +338,7 @@ export default function HomePage() {
     setResult(null)
     setResult2(null)
     setBreakdown(null)
+    setBreakdownError(null)
     setBreakdownOpen(false)
     setChatHistory([])
     setLoading(true)
@@ -361,28 +363,9 @@ export default function HomePage() {
     }
   }
 
-  const buildBreakdownFallback = useCallback(() => ({
-    breakdown: {
-      skillMatch: result?.analysis?.confidence ? Math.min(result.analysis.confidence + 5, 95) : 80,
-      issueClarity: 60,
-      codebaseSize: 80,
-      priorExperience: Math.max((result?.analysis?.confidence || 50) - 30, 30),
-    },
-    subtasks: parseApproachSteps(result?.analysis?.approach || '').map((text, i) => ({
-      id: i + 1,
-      text,
-      hours: Math.max(1, Math.round((result?.analysis?.estimatedHours || 8) / 3)),
-    })),
-    prDraft: {
-      title: `fix: ${result?.issue?.title || 'issue resolution'}`,
-      problem: result?.issue?.title || '',
-      solution: result?.analysis?.firstStep || '',
-      testing: 'Run existing test suite and add regression tests for the fix.',
-    },
-  }), [result])
-
   const applyBreakdown = (data) => {
     setBreakdown(data)
+    setBreakdownError(null)
     const initial = {}
     ;(data.subtasks || []).forEach((s) => {
       initial[s.id || s.text] = false
@@ -393,16 +376,26 @@ export default function HomePage() {
   const loadBreakdown = async (workspace) => {
     if (breakdown || breakdownLoading) return
     setBreakdownLoading(true)
+    setBreakdownError(null)
     try {
-      const params = new URLSearchParams({ workspace: workspace || '' })
+      const params = new URLSearchParams({
+        workspace: workspace || '',
+        issueTitle: result?.issue?.title || '',
+        skills: skills.join(','),
+      })
       const res = await fetch(`/api/breakdown?${params}`)
       if (res.ok) {
         applyBreakdown(await res.json())
       } else {
-        applyBreakdown(buildBreakdownFallback())
+        let errMsg = 'Could not generate breakdown, please try again'
+        try {
+          const errData = await res.json()
+          errMsg = errData.error || errMsg
+        } catch (_) {}
+        setBreakdownError(errMsg)
       }
     } catch (_) {
-      applyBreakdown(buildBreakdownFallback())
+      setBreakdownError('Could not generate breakdown, please try again')
     } finally {
       setBreakdownLoading(false)
     }
@@ -1303,16 +1296,41 @@ export default function HomePage() {
                 <div className="card p-6 mt-4">
                   {breakdownLoading ? (
                     <div className="space-y-4">
+                      <p className="text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+                        🤖 Running on-device AI analysis — this takes ~15 seconds...
+                      </p>
                       {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="skeleton shimmer h-8 rounded-lg" />
                       ))}
                     </div>
+                  ) : breakdownError ? (
+                    <div
+                      className="flex items-start gap-3 p-4 rounded-xl"
+                      style={{
+                        background: 'rgba(239,68,68,0.08)',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                      }}
+                    >
+                      <AlertTriangle size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
+                      <div>
+                        <p className="text-sm font-medium mb-1" style={{ color: 'var(--danger)' }}>Unable to generate breakdown</p>
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{breakdownError}</p>
+                        <button
+                          type="button"
+                          onClick={() => { setBreakdown(null); setBreakdownError(null); loadBreakdown(result?.workspace) }}
+                          className="mt-3 text-xs font-medium px-3 py-1.5 rounded-lg transition-all hover:scale-[1.02]"
+                          style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--danger)' }}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    </div>
                   ) : breakdown ? (
                     <>
-                      <ProgressBar label="Skill match" value={breakdown.breakdown?.skillMatch ?? 80} delay={0} />
-                      <ProgressBar label="Issue clarity" value={breakdown.breakdown?.issueClarity ?? 60} delay={100} />
-                      <ProgressBar label="Codebase size" value={breakdown.breakdown?.codebaseSize ?? 80} delay={200} />
-                      <ProgressBar label="Prior experience" value={breakdown.breakdown?.priorExperience ?? 50} delay={300} />
+                      <ProgressBar label="Skill match" value={breakdown.breakdown?.skillMatch ?? 0} delay={0} />
+                      <ProgressBar label="Issue clarity" value={breakdown.breakdown?.issueClarity ?? 0} delay={100} />
+                      <ProgressBar label="Codebase complexity" value={breakdown.breakdown?.codebaseComplexity ?? 0} delay={200} />
+                      <ProgressBar label="Prior art needed" value={breakdown.breakdown?.priorArtNeeded ?? 0} delay={300} />
 
                       {(breakdown.subtasks?.length > 0) && (
                         <div className="mt-8 pt-6 border-t" style={{ borderColor: 'var(--border)' }}>

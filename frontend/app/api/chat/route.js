@@ -39,9 +39,7 @@ export async function POST(request) {
     const presetHint = preset ? PRESET_HINTS[preset] || '' : ''
 
     const issueContext = meta
-      ? `Issue: "${meta.title}" (${meta.owner}/${meta.repo}#${meta.issueNumber})
-State: ${meta.state}
-Labels: ${meta.labels || 'none'}`
+      ? `Issue: "${meta.title}" (${meta.owner}/${meta.repo}#${meta.issueNumber})\nState: ${meta.state}\nLabels: ${meta.labels || 'none'}`
       : 'No issue context available.'
 
     const systemPrompt = `You are PrivateBounty AI — an expert software engineer assistant running 100% on-device via QVAC SDK.
@@ -60,30 +58,35 @@ Developer skills: ${skillsStr || 'not specified'}`
     ]
 
     modelId = await loadModel({ modelSrc: LLAMA_3_2_1B_INST_Q4_0 })
-    const result = completion({ modelId, history: chatHistory })
+    const run = completion({ modelId, history: chatHistory })
 
+    // Collect all tokens using the correct `.events` API
+    let fullText = ''
+    for await (const event of run.events) {
+      if (event.type === 'contentDelta') {
+        fullText += event.text
+      }
+    }
+
+    // Strip any <think>...</think> blocks the model may emit
+    fullText = fullText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+
+    // Unload model before returning
+    try { await unloadModel({ modelId }) } catch (_) {}
+    modelId = null
+
+    if (!fullText) {
+      return new Response('The AI did not produce a response. Please try again.', { status: 500 })
+    }
+
+    // Stream the buffered text back as plain text
     const encoder = new TextEncoder()
-    const currentModelId = modelId
-
     const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const token of result.tokenStream) {
-            controller.enqueue(encoder.encode(token))
-          }
-        } catch (err) {
-          controller.enqueue(
-            encoder.encode(`\n\n[Error: ${err.message || 'Generation failed'}]`)
-          )
-        } finally {
-          try {
-            await unloadModel({ modelId: currentModelId })
-          } catch (_) {}
-          controller.close()
-        }
+      start(controller) {
+        controller.enqueue(encoder.encode(fullText))
+        controller.close()
       },
     })
-
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -93,9 +96,7 @@ Developer skills: ${skillsStr || 'not specified'}`
   } catch (err) {
     console.error('[api/chat]', err)
     if (modelId) {
-      try {
-        await unloadModel({ modelId })
-      } catch (_) {}
+      try { await unloadModel({ modelId }) } catch (_) {}
     }
     return new Response(err.message || 'Chat failed', { status: 500 })
   }

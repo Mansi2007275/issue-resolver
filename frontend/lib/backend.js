@@ -5,32 +5,56 @@ import { readFile } from 'node:fs/promises';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_DIR = path.resolve(__dirname, '../../backend');
 
+const BACKEND_URL = 'http://localhost:3002';
+
+/**
+ * Fetch wrapper that converts ECONNREFUSED / "fetch failed" errors into
+ * a human-readable message telling the user to start the backend server.
+ */
+export async function backendFetch(path, init) {
+  try {
+    return await fetch(`${BACKEND_URL}${path}`, init);
+  } catch (err) {
+    const isNetworkErr =
+      err.cause?.code === 'ECONNREFUSED' ||
+      err.message?.includes('fetch failed') ||
+      err.message?.includes('ECONNREFUSED');
+    if (isNetworkErr) {
+      throw new Error(
+        'Backend server is not running. Please start it with: npm run dev (from the project root). ' +
+        'The backend must be running on port 3002.'
+      );
+    }
+    throw err;
+  }
+}
+
 export async function loadBackendModules() {
   return {
     ingestIssue: async (owner, repo, issueNumber) => {
-      const response = await fetch('http://localhost:3002/ingest', {
+      const response = await backendFetch('/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner, repo, issueNumber })
+        body: JSON.stringify({ owner, repo, issueNumber }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(errData.error || `Ingest failed (HTTP ${response.status})`);
       }
       return response.json();
     },
     analyzeIssue: async (workspace, issueTitle, userSkills) => {
-      const response = await fetch('http://localhost:3002/analyze', {
+      const response = await backendFetch('/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace, issueTitle, userSkills })
+        body: JSON.stringify({ workspace, issueTitle, userSkills }),
       });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(errData.error || `Analysis failed (HTTP ${response.status})`);
       }
       return response.json();
-    }
+    },
   };
 }
 

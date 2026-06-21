@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { ingestIssue } from './ingest.js';
 import { analyzeIssue } from './analyze.js';
+import { breakdownIssue } from './breakdown.js';
 
 const PORT = 3002;
 
@@ -42,12 +43,14 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   try {
+    // ── GET /health ─────────────────────────────────────────────────────────
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', port: PORT }));
       return;
     }
 
+    // ── POST /ingest ─────────────────────────────────────────────────────────
     if (req.method === 'POST' && url.pathname === '/ingest') {
       const body = await parseJsonBody(req);
       const { owner, repo, issueNumber } = body;
@@ -64,6 +67,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ── POST /analyze ─────────────────────────────────────────────────────────
     if (req.method === 'POST' && url.pathname === '/analyze') {
       const body = await parseJsonBody(req);
       const { workspace, issueTitle, userSkills } = body;
@@ -80,7 +84,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // 404 Route Not Found
+    // ── POST /breakdown ───────────────────────────────────────────────────────
+    if (req.method === 'POST' && url.pathname === '/breakdown') {
+      const body = await parseJsonBody(req);
+      const { workspace, issueTitle, userSkills } = body;
+
+      if (!workspace) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing workspace' }));
+        return;
+      }
+
+      // breakdownIssue throws on failure — no fake fallback
+      const result = await breakdownIssue(
+        workspace,
+        issueTitle || workspace,
+        userSkills || []
+      );
+
+      // Shape the response so the frontend receives { breakdown: {...}, subtasks: [...], prDraft: {...} }
+      const { skillMatch, issueClarity, codebaseComplexity, priorArtNeeded, subtasks, prDraft } = result;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        breakdown: { skillMatch, issueClarity, codebaseComplexity, priorArtNeeded },
+        subtasks,
+        prDraft,
+      }));
+      return;
+    }
+
+    // ── 404 ────────────────────────────────────────────────────────────────────
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Route not found' }));
   } catch (err) {
@@ -101,5 +134,6 @@ server.listen(PORT, () => {
   console.log(`   GET  /health`);
   console.log(`   POST /ingest`);
   console.log(`   POST /analyze`);
+  console.log(`   POST /breakdown`);
   console.log(`==================================================`);
 });

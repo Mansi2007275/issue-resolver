@@ -43,9 +43,9 @@ export async function findMetaByWorkspace(workspace) {
 export function metaToIssue(meta, url) {
   const labels = meta.labels
     ? String(meta.labels)
-        .split(',')
-        .map((l) => l.trim())
-        .filter(Boolean)
+      .split(',')
+      .map((l) => l.trim())
+      .filter(Boolean)
     : []
 
   return {
@@ -56,4 +56,12 @@ export function metaToIssue(meta, url) {
     labels,
     commentsCount: meta.commentsCount ?? 0,
   }
+}
+export async function backendFetch(path, options = {}) {
+  const res = await fetch(`http://localhost:3002${path}`, options)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error || `Backend error: ${res.status}`)
+  }
+  return res
 }
