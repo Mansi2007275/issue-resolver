@@ -62,6 +62,7 @@ Next.js Dashboard
 Interactive Issue Chat
 ```
 
+<img width="930" height="757" alt="Screenshot 2026-06-22 085112" src="https://github.com/user-attachments/assets/ea76a8a2-ed06-4767-8da1-bae0a4db5f91" />
 
 ---
 
