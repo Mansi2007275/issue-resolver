@@ -70,7 +70,7 @@ Interactive Issue Chat
 
 Watch the complete walkthrough and live issue analysis:
 
-[Demo Video](YOUR_DEMO_VIDEO_LINK)
+[Demo Video](https://www.loom.com/share/c893a91b64074a09ab6e8cc7ed14584c)
 
 ---
 
