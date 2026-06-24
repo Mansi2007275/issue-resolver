@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_DIR = path.resolve(__dirname, '../../backend');
 
-const BACKEND_URL = 'http://localhost:3002';
+const BACKEND_URL = 'http://127.0.0.1:3002';
 
 /**
  * Fetch wrapper that converts ECONNREFUSED / "fetch failed" errors into
@@ -15,6 +15,12 @@ export async function backendFetch(path, init) {
   try {
     return await fetch(`${BACKEND_URL}${path}`, init);
   } catch (err) {
+    console.error('[backendFetch error details]', {
+      message: err.message,
+      code: err.code,
+      cause: err.cause,
+      stack: err.stack,
+    });
     const isNetworkErr =
       err.cause?.code === 'ECONNREFUSED' ||
       err.message?.includes('fetch failed') ||

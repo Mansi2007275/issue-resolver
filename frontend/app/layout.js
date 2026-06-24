@@ -1,4 +1,5 @@
 import './globals.css'
+import LayoutWrapper from './components/LayoutWrapper'
 
 export const metadata = {
   title: 'PrivateBounty AI',
@@ -19,125 +20,134 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body className="dot-grid" style={{ backgroundColor: 'var(--bg-base)' }}>
-        {/* ── Top Navbar ── */}
-        <nav
-          style={{
-            height: 'var(--navbar-height)',
-            borderBottom: '1px solid var(--border)',
-            backgroundColor: 'rgba(8, 8, 16, 0.85)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            position: 'sticky',
-            top: 0,
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 1100,
-              margin: '0 auto',
-              padding: '0 24px',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            {/* Logo */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 4px 15px rgba(124,58,237,0.4)',
-                  flexShrink: 0,
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M8 1L13 4V8C13 11 10.5 13.5 8 15C5.5 13.5 3 11 3 8V4L8 1Z" fill="white" fillOpacity="0.9" />
-                  <circle cx="8" cy="8" r="2.5" fill="white" />
-                </svg>
-              </div>
-              <span
-                style={{
-                  fontFamily: 'Space Grotesk, system-ui, sans-serif',
-                  fontWeight: 600,
-                  fontSize: 17,
-                  color: 'var(--text-primary)',
-                  letterSpacing: '-0.3px',
-                }}
-              >
-                PrivateBounty
-                <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}> AI</span>
-              </span>
-            </div>
-
-            {/* Right: QVAC Badge */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                background: 'rgba(124,58,237,0.08)',
-                border: '1px solid rgba(124,58,237,0.2)',
-                borderRadius: 999,
-                padding: '6px 14px',
-              }}
-            >
-              <div
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--accent)',
-                  animation: 'pulseDot 2s ease-in-out infinite',
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: 'Inter, sans-serif',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: 'var(--text-accent)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Powered by QVAC SDK
-              </span>
-            </div>
-          </div>
-        </nav>
-
-        {/* ── Page Content ── */}
-        <main style={{ minHeight: 'calc(100vh - var(--navbar-height))' }}>
-          {children}
-        </main>
+      <body style={{ backgroundColor: '#f0fdf4', margin: 0 }}>
+        <LayoutWrapper>{children}</LayoutWrapper>
 
         {/* ── Footer ── */}
         <footer
           style={{
-            borderTop: '1px solid var(--border)',
+            borderTop: '1px solid #bbf7d0',
             padding: '24px',
-            textAlign: 'center',
-            color: 'var(--text-secondary)',
-            fontSize: 12,
+            backgroundColor: '#ffffff',
             fontFamily: 'Inter, sans-serif',
           }}
         >
-          <span>Built for QVAC Hackathon I on DoraHacks · </span>
-          <span style={{ color: 'var(--text-accent)' }}>100% on-device · 0 cloud calls</span>
-          <span> · Powered by QVAC SDK by Tether</span>
+          <div
+            style={{
+              maxWidth: '1100px',
+              margin: '0 auto',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '24px',
+              paddingBottom: '24px',
+            }}
+          >
+            {/* COLUMN 1: Logo & App Info */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{
+                    width: '24px',
+                    height: '24px',
+                    backgroundColor: '#16a34a',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </div>
+                <span
+                  style={{
+                    fontFamily: 'Space Grotesk, sans-serif',
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    color: '#14532d',
+                  }}
+                >
+                  PrivateBounty <span style={{ color: '#16a34a' }}>AI</span>
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#4b7a5a' }}>
+                A local-first GitHub issue analyzer
+              </span>
+              <span style={{ fontSize: '11px', color: '#86efac' }}>
+                Built by Mansi Yadav
+              </span>
+            </div>
+
+            {/* COLUMN 2: Built With */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#14532d' }}>Built With</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#4b7a5a' }}>
+                <span>✅ QVAC SDK (@qvac/sdk)</span>
+                <span>✅ Qwen3 4B on-device model</span>
+                <span>✅ Next.js 15</span>
+                <span>✅ SQLite local vector DB</span>
+              </div>
+            </div>
+
+            {/* COLUMN 3: Links */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#14532d' }}>Links</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
+                <a
+                  href="https://github.com/Mansi2007275/issue-resolver"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#16a34a', textDecoration: 'none' }}
+                >
+                  GitHub Repo →
+                </a>
+                <a
+                  href="https://docs.qvac.tether.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#16a34a', textDecoration: 'none' }}
+                >
+                  QVAC Docs →
+                </a>
+                <a
+                  href="https://dorahacks.io/hackathon/qvac-unleach-edge-ai-i/detail"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#16a34a', textDecoration: 'none' }}
+                >
+                  DoraHacks Submission
+                </a>
+                <a
+                  href="https://discord.com/invite/tetherdev"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#16a34a', textDecoration: 'none' }}
+                >
+                  QVAC Discord →
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Bar */}
+          <div
+            style={{
+              borderTop: '1px solid #bbf7d0',
+              paddingTop: '16px',
+              textAlign: 'center',
+              color: '#86efac',
+              fontSize: '10px',
+              fontWeight: 500,
+            }}
+          >
+            © 2026 PrivateBounty AI · QVAC Hackathon I · MIT License · 0 cloud
+          </div>
         </footer>
       </body>
     </html>

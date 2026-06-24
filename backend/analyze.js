@@ -87,32 +87,39 @@ export async function analyzeIssue(workspace, issueTitle, userSkills) {
   console.log('─── Step 2/3: Building prompt ───');
   const skillsStr = Array.isArray(userSkills) ? userSkills.join(', ') : (userSkills || '');
 
-  const userPrompt = `GitHub Issue: ${issueTitle}
+  const userPrompt = `Analyze the following GitHub issue for a developer and produce a JSON assessment.
 
-Issue details: ${context}
+ISSUE TITLE: ${issueTitle}
 
-Developer skills: ${skillsStr}
+ISSUE DETAILS:
+${context}
 
-Analyze this issue and fill in the JSON below with REAL values specific to this issue.
-Do NOT copy the example values — compute new ones based on the actual issue content.
-Output ONLY the JSON object, nothing else:
+DEVELOPER SKILLS: ${skillsStr}
+
+INSTRUCTIONS:
+1. Read the issue carefully.
+2. Determine if the developer's skills match what is needed.
+3. Estimate difficulty and time based on the ACTUAL scope described.
+4. Assign a confidence score (0-100) based on how well the developer can handle it. Do NOT default to 75 — reason about the real match.
+
+Respond with ONLY a valid JSON object in this exact shape (replace every <...> placeholder with a real value you computed):
 
 {
-  "canSolve": true,
-  "confidence": 75,
-  "difficulty": "Intermediate",
-  "estimatedHours": 8,
-  "approach": "Step 1: ... Step 2: ... Step 3: ...",
-  "requiredSkills": ["skill1", "skill2"],
-  "missingSkills": [],
-  "firstStep": "specific first action",
-  "warningFlags": ""
+  "canSolve": <true or false based on skill match>,
+  "confidence": <integer 0-100: YOUR assessment of developer fit — must NOT be 75 unless you have a specific reason>,
+  "difficulty": "<one of: Beginner, Easy, Intermediate, Advanced, Expert>",
+  "estimatedHours": <integer: realistic hours to solve based on issue scope>,
+  "approach": "<Step 1: ... Step 2: ... Step 3: ... — specific to THIS issue>",
+  "requiredSkills": [<list of actual skills this issue requires>],
+  "missingSkills": [<skills from requiredSkills that the developer lacks>],
+  "firstStep": "<the very first concrete action to take>",
+  "warningFlags": "<any concerns or risks, or empty string if none>"
 }`;
 
   const history = [
     {
       role: 'system',
-      content: 'You are a JSON API. You ONLY output valid JSON objects. Never output explanations, markdown, or <think> tags. Analyze the GitHub issue provided and compute REAL values — do not copy placeholder values from the template.',
+      content: 'You are a JSON API that analyzes GitHub issues for developers. You ONLY output valid JSON objects — never markdown, code fences, explanations, or <think> tags. You MUST compute every value independently based on the actual issue content. Never use default or template values.',
     },
     { role: 'user', content: userPrompt },
   ];

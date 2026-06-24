@@ -58,7 +58,7 @@ export function metaToIssue(meta, url) {
   }
 }
 export async function backendFetch(path, options = {}) {
-  const res = await fetch(`http://localhost:3002${path}`, options)
+  const res = await fetch(`http://127.0.0.1:3002${path}`, options)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error || `Backend error: ${res.status}`)

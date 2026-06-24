@@ -123,7 +123,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
   console.clear();
   console.log(`==================================================`);
   console.log(` PrivateBounty AI Standalone Server Running`);
